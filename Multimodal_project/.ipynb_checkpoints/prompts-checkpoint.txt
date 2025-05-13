@@ -1,0 +1,91 @@
+1 round of prompting:
+
+messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": prompt},
+                ],
+}]
+
+2 rounds of prompting:
+
+messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": "Solve the given question using step-by-step reasoning." + prompt},
+                ],
+            }
+        ]
+
+# Stage 2: Ask for only the integer answer
+        messages.append({
+            "role": "assistant",
+            "content": [{"type": "text", "text": full_response}],
+        })
+        messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text": "Given your previous response, extract the final numeric answer only."}],
+        })
+
+Interactive prompting with CoT:
+
+# Message history leading up to the revision
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": prompt},
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": previous_response}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "That doesn't seem correct. Observe the image carefully, think step-by-step and then provide the answer."}],
+        },
+    ]
+
+# Step 2: Extract numeric answer from revised response
+    messages.append({
+        "role": "assistant",
+        "content": [{"type": "text", "text": revised_response}],
+    })
+    messages.append({
+        "role": "user",
+        "content": [{"type": "text", "text": "Now, extract only the final numeric answer from your revised response."}],
+    })
+
+System prompt:
+
+system_prompt = """You are an AI assistant that solves questions by referring to the associated images. Analyze the content, context, and notable features of the images. Provide an answer that covers the important aspects of the image."""
+
+messages = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": "Describe the image and then use that to solve the given question using step-by-step reasoning" + prompt},
+                ],
+            },
+        ]
+
+# Stage 2: Ask for only the integer answer
+        messages.append({
+            "role": "assistant",
+            "content": [{"type": "text", "text": full_response}],
+        })
+        messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text": "Given your previous response, extract the final numeric answer only."}],
+        })

@@ -19,9 +19,11 @@ def calculate_accuracy(jsonl_path):
     with open(jsonl_path, "r", encoding="utf-8") as f:
         for line in f:
             item = json.loads(line)
-            pred = item.get("extracted_answer")
-            true = item.get("ground_truth_answer")
-
+            pred = item.get("revised_extracted_answer")
+            if pred is None:
+                pred = item.get("extracted_answer")
+            true = item.get("answer")
+            
             if pred is not None and true is not None:
                 # Strip spaces and compare as strings
                 if str(pred).strip() == str(true).strip():
@@ -32,4 +34,4 @@ def calculate_accuracy(jsonl_path):
     print(f"Accuracy: {accuracy:.2%} ({correct}/{total})")
     return accuracy, correct, total
 
-print(calculate_accuracy("mathvista_data/testmini/master_output.jsonl"))
+print(calculate_accuracy("mathvista_data/testmini/cot_outputs.jsonl"))

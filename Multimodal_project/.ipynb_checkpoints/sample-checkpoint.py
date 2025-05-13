@@ -5,13 +5,16 @@ from tqdm import tqdm
 import torch
 from transformers import AutoProcessor, AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration
 from qwen_vl_utils import process_vision_info
+import re
+import editdistance
+import numpy as np
 
 # Paths
 base_dir = "mathvista_data/testmini"
 # image_dir = os.path.join(base_dir, "images")
 jsonl_path = os.path.join(base_dir, "data.jsonl")
 # jsonl_path = "mathvista_data/testmini/misc_samples.jsonl"
-output_file = os.path.join(base_dir, "cot_outputs.jsonl")
+output_file = os.path.join(base_dir, "prompt_outputs.jsonl")
 model_path = "../../../../work/sachan/piyushi/models/qwen-vl-3B-it"
 
 processor = AutoProcessor.from_pretrained(model_path, max_pixels=1280*28*28, trust_remote_code=True)
@@ -27,6 +30,82 @@ with open(jsonl_path, "r", encoding="utf-8") as f:
     data = [json.loads(line) for line in f]
 
 results = []
+
+def clean_pred(pred, options=[]):
+    if pred in options: 
+        return pred  # skip if clean enough
+    answer_inds = ['Answer:', '*Answer*:', '*Answer:*', '**Answer:**', '**Answer**:']
+    pred = pred.strip()
+    tmp_ind = ''
+    for answer_ind in answer_inds:
+        if answer_ind in pred:
+            tmp_ind = answer_ind
+            break
+    if len(tmp_ind):
+        pred = pred.split(tmp_ind)[-1].strip()
+    else:
+        pred = " ".join(pred.strip().split())
+    return pred
+
+def is_numeric_only(answer):
+    """
+    Returns True if the answer is a numeric value only: integer, float, or negative,
+    possibly with whitespace around it.
+    """
+
+    return bool(re.fullmatch(r"\s*-?\d+(\.\d+)?\s*", answer))
+
+def select_mc_option(target, options):
+    target = clean_pred(target, options)
+    # if model output the answer directly
+    if target in options:
+        return options.index(target)
+    # if model output contain one unique option
+    tmp_count = 0
+    for i in range(len(options)):
+        op = options[i]
+        if op in target:
+            tmp_count += 1
+            tmp_idx = i
+    if tmp_count == 1:
+        return tmp_idx
+    # if model output a character, use it as index of available choices
+    sequential_characters = [chr(ord('A') + i) for i in range(len(options))]
+    if target in sequential_characters:  
+        return sequential_characters.index(target)
+    # if all failed, select the most similar option
+    target = target.lower().strip()
+    n = len(options)
+    options = [x.lower().strip() for x in options]
+    for ix, option in enumerate(options):
+        if option == target:
+            return ix
+    contains = []
+    for ix, option in enumerate(options):
+        if target in option:
+            contains.append(ix)
+    if len(contains) == 1:
+        return contains[0]
+    distances = [editdistance.eval(opt, target) for opt in options]
+    return np.argmin(distances)
+
+def get_choices(dataset, pid):
+    """
+    Retrieves the options for the given pid
+
+    Args:
+        dataset (list[dict]): The dataset containing samples with pid, query, etc.
+        pid (str): The target pid to find.
+
+    Returns:
+        int: Index of the selected option.
+    """
+    
+    for sample in dataset:
+        if sample.get("pid") == pid:
+            options = sample["choices"]
+            return options
+    raise ValueError(f"PID {pid} not found in dataset.")
 
 def resize_if_needed(image, min_size=28):
     width, height = image.size
@@ -119,7 +198,9 @@ def resize_if_needed(image, min_size=28):
 
 def inference_batch(image_paths, prompts, model, processor, max_new_tokens=256):
     results = []
-
+    
+    system_prompt = """You are an AI assistant that solves questions by referring to the associated images. Analyze the content, context, and notable features of the images. Provide an answer that covers the important aspects of the image."""
+    
     for img_path, prompt in zip(image_paths, prompts):
         # image = Image.open(img_path).convert("RGB")
         try:
@@ -131,14 +212,28 @@ def inference_batch(image_paths, prompts, model, processor, max_new_tokens=256):
 
 
         # First prompt: full image + question
+        # messages = [
+        #     {
+        #         "role": "user",
+        #         "content": [
+        #             {"type": "image", "image": image},
+        #             {"type": "text", "text": "Solve the given question using step-by-step reasoning." + prompt},
+        #         ],
+        #     }
+        # ]
+        # Recreate the message list fresh for each image
         messages = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
-                    {"type": "text", "text": "Solve the given question using step-by-step reasoning." + prompt},
+                    {"type": "text", "text": "Describe the image and then use that to solve the given question using step-by-step reasoning" + prompt},
                 ],
-            }
+            },
         ]
 
         # Stage 1: Get full model response
@@ -194,7 +289,13 @@ def inference_batch(image_paths, prompts, model, processor, max_new_tokens=256):
     return results
 
 def interactive_reprompt(image_path, prompt, model, processor, previous_response, max_new_tokens=256):
-    image = Image.open(image_path).convert("RGB")
+    # image = Image.open(image_path).convert("RGB")
+    try:
+        image = Image.open(image_path).convert("RGB")
+        image = resize_if_needed(image)
+    except Exception as e:
+        print(f"Skipping {img_path} due to error: {e}")
+        return None
 
     # Message history leading up to the revision
     messages = [
@@ -266,8 +367,11 @@ def interactive_reprompt(image_path, prompt, model, processor, previous_response
 # Inference loop with batching
 batch_size = 1
 results = []
+# len(data)
+preds, truths = [], []
 
-for i in tqdm(range(0, len(data), batch_size)):
+progress_bar = tqdm(range(0, len(data), batch_size))
+for i in progress_bar:
     batch = data[i:i+batch_size]
 
     image_paths, prompts, metadata = [], [], []
@@ -294,11 +398,6 @@ for i in tqdm(range(0, len(data), batch_size)):
 
     # Run model
     answers = inference_batch(image_paths, prompts, model, processor)
-    # print(answers)
-    # print(type(answers[0]), answers[0])
-    # for meta, generated_answer in zip(metadata, answers):
-    #     meta["generated_answer"] = generated_answer
-    #     results.append(meta)
     
     # Update original items
     for idx, (item, result) in enumerate(zip(metadata, answers)):
@@ -306,17 +405,45 @@ for i in tqdm(range(0, len(data), batch_size)):
         item["extracted_answer"] = result["extracted_answer"]
         # print(item)
         # Interactive retry if answer is incorrect
-        if item["answer"] != result["extracted_answer"]:
-            retry_result = interactive_reprompt(
-                image_path=image_paths[idx],
-                prompt=prompts[idx],
-                model=model,
-                processor=processor,
-                previous_response=result["generated_answer"]
-            )
-            item.update(retry_result)
+        # if item["answer"] != result["extracted_answer"]:
+        #     retry_result = interactive_reprompt(
+        #         image_path=image_paths[idx],
+        #         prompt=prompts[idx],
+        #         model=model,
+        #         processor=processor,
+        #         previous_response=result["generated_answer"]
+        #     )
+        #     if retry_result is None:
+        #         continue
+        #     item.update(retry_result)
+        # --- Post-process answer for accuracy evaluation ---
+        model_output = result["extracted_answer"]
+        query = item["query"]
+        ground_truth = item["answer"]
 
+        handled = False
 
+        if "Choices" in query:
+            options = get_choices(data, item["pid"])
+            choice_idx = select_mc_option(model_output, options)
+            prediction = options[choice_idx] if 0 <= choice_idx < len(options) else ""
+            handled = True
+
+        elif is_numeric_only(model_output):
+            prediction = model_output.strip()
+            handled = True
+
+        if not handled:
+            prediction = model_output.strip()
+
+        item["prediction"] = prediction
+        preds.append(prediction)
+        truths.append(ground_truth)
+
+    # Compute and update accuracy in progress bar
+    if preds:  # avoid ZeroDivisionError
+        acc = sum(p == t for p, t in zip(preds, truths)) / len(preds)
+        progress_bar.set_postfix({"Accuracy": f"{acc:.2%}"})
     torch.cuda.empty_cache()
     # break
 

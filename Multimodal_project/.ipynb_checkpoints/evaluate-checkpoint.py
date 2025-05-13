@@ -84,16 +84,16 @@ def accuracy(preds, truths):
     """
     Calculates exact match accuracy.
     """
-    print(len(truths))
+    print(len(preds))
     correct = sum([p == t for p, t in zip(preds, truths)])
     return correct / len(preds) if preds else 0
 
     
-input_path = "mathvista_data/testmini/data.jsonl"
-output_path = "mathvista_data/testmini/qwen_vl_outputs.jsonl"
+# input_path = "mathvista_data/testmini/data.jsonl"
+output_path = "mathvista_data/testmini/cot_outputs.jsonl"
 
-with open(input_path, "r", encoding="utf-8") as f:
-    input_data = [json.loads(line) for line in f]
+# with open(input_path, "r", encoding="utf-8") as f:
+#     input_data = [json.loads(line) for line in f]
 
 with open(output_path, "r", encoding="utf-8") as f:
     output_data = [json.loads(line) for line in f]
@@ -105,11 +105,15 @@ misc = []
 for sample in output_data:
     pid = sample["pid"]
     query = sample["query"]
-    model_output = sample["generated_answer"]
-    ground_truth = sample["ground_truth_answer"]
+    model_output = sample.get("revised_extracted_answer")
+    if model_output is None:
+        model_output = sample["extracted_answer"]
+    # model_output = sample["generated_answer"]
+    # ground_truth = sample["ground_truth_answer"]
+    ground_truth = sample["answer"]
     handled = False
     if "Choices" in query:
-        options = get_choices(input_data, pid)
+        options = get_choices(output_data, pid)
         # print(options)
         idx = select_mc_option(model_output, options)
         # print(idx)
@@ -117,28 +121,40 @@ for sample in output_data:
         # print(extracted_answer)
 
         # Save extracted prediction to the sample
-        sample["extracted_answer"] = extracted_answer
+        sample["prediction"] = extracted_answer
         handled = True
         # sample["pred_index"] = idx
     
-    if not handled and is_numeric_only(model_output):
-        extracted_answer = model_output.strip()
-        sample["extracted_answer"] = extracted_answer
-        handled = True
+    # if not handled and is_numeric_only(model_output):
+    #     extracted_answer = model_output.strip()
+    #     sample["prediction"] = extracted_answer
+    #     handled = True
     
-    # Append only if extracted_answer was determined
-    if handled:
-        preds.append(sample["extracted_answer"])
-        truths.append(ground_truth)
-    else:
-        misc.append(sample)
+    # # Append only if extracted_answer was determined
+    # if handled:
+    #     preds.append(sample["prediction"])
+    #     truths.append(ground_truth)
+    # else:
+    #     misc.append(sample)
+    
+    elif is_numeric_only(model_output):
+        sample["prediction"] = model_output.strip()
+        handled = True
+
+    # NEW: default handling for other cases
+    if not handled:
+        sample["prediction"] = model_output.strip()
+
+    # Now always append
+    preds.append(sample["prediction"])
+    truths.append(ground_truth)
 
 acc = accuracy(preds, truths)
 print(f"Accuracy: {acc:.2%}")
 # print(preds)
 # print(truths)
-output_2 = "mathvista_data/testmini/misc_outputs.jsonl"
+output_2 = "mathvista_data/testmini/cot_acc.jsonl"
 # Save enriched dataset
 with open(output_2, "w", encoding="utf-8") as f:
-    for item in misc:
+    for item in output_data:
         f.write(json.dumps(item, ensure_ascii=False) + "\n")

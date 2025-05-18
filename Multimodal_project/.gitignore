@@ -1,0 +1,6 @@
+#ignore these folders
+.ipynb_checkpoints/anole_inf-checkpoint.py
+Anole-7b-v0.1/
+../Optim_project/
+../Sem_project/
+../miniconda3/

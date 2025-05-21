@@ -14,11 +14,11 @@ base_dir = "mathvista_data/testmini"
 # image_dir = os.path.join(base_dir, "images")
 jsonl_path = os.path.join(base_dir, "data.jsonl")
 # jsonl_path = "mathvista_data/testmini/misc_samples.jsonl"
-output_file = os.path.join(base_dir, "prompt_outputs.jsonl")
-model_path = "../../../../work/sachan/piyushi/models/qwen-vl-3B-it"
+output_file = os.path.join(base_dir, "chameleon_outputs.jsonl")
+model_path = "../../../../work/sachan/piyushi/models/chameleon-7b"
 
 processor = AutoProcessor.from_pretrained(model_path, max_pixels=1280*28*28, trust_remote_code=True)
-model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+model = AutoModelForImageTextToText.from_pretrained(
     model_path,
     local_files_only=True,
     device_map="auto",
@@ -236,11 +236,10 @@ def inference_batch(image_paths, prompts, model, processor, max_new_tokens=256):
             },
         ]
 
-        # Stage 1: Get full model response
         text_1 = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         image_inputs, video_inputs = process_vision_info([messages])
         inputs = processor(
-            text=[text_1],
+            text=[text_inputs],
             images=image_inputs,
             videos=video_inputs,
             padding=True,
@@ -271,8 +270,8 @@ def inference_batch(image_paths, prompts, model, processor, max_new_tokens=256):
             videos=None,
             padding=True,
             return_tensors="pt",
-        ).to("cuda")
-
+        ).to("cuda")  
+        
         with torch.no_grad():
             gen_ids_2 = model.generate(**inputs, max_new_tokens=10)
         trimmed_ids_2 = gen_ids_2[:, inputs.input_ids.shape[1]:]

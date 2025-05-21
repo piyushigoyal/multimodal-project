@@ -3,8 +3,9 @@ import os
 from PIL import Image
 from tqdm import tqdm
 import torch
-from transformers import AutoProcessor, AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration
-from qwen_vl_utils import process_vision_info
+# from transformers import AutoProcessor, AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration
+# from qwen_vl_utils import process_vision_info
+from transformers import ChameleonProcessor, ChameleonForConditionalGeneration
 import re
 import editdistance
 import numpy as np
@@ -14,16 +15,19 @@ base_dir = "mathvista_data/testmini"
 # image_dir = os.path.join(base_dir, "images")
 jsonl_path = os.path.join(base_dir, "data.jsonl")
 # jsonl_path = "mathvista_data/testmini/misc_samples.jsonl"
-output_file = os.path.join(base_dir, "chameleon_outputs.jsonl")
+output_file = "outputs/chameleon_outputs.jsonl"
 model_path = "../../../../work/sachan/piyushi/models/chameleon-7b"
 
-processor = AutoProcessor.from_pretrained(model_path, max_pixels=1280*28*28, trust_remote_code=True)
-model = AutoModelForImageTextToText.from_pretrained(
-    model_path,
-    local_files_only=True,
-    device_map="auto",
-    torch_dtype="auto"
-)
+# processor = AutoProcessor.from_pretrained(model_path, max_pixels=1280*28*28, trust_remote_code=True)
+# model = AutoModelForImageTextToText.from_pretrained(
+#     model_path,
+#     local_files_only=True,
+#     device_map="auto",
+#     torch_dtype="auto"
+# )
+
+processor = ChameleonProcessor.from_pretrained(model_path)
+model = ChameleonForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="cuda")
 
 # Load dataset
 with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -363,6 +367,42 @@ def interactive_reprompt(image_path, prompt, model, processor, previous_response
         "revised_extracted_answer": revised_extracted_answer,
     }
 
+def chameleon_inf(image_paths, texts, model, processor):
+    images, prompts = [], []
+    
+    for img_path, text in zip(image_paths, texts):
+        try:
+            image = Image.open(img_path).convert("RGB")
+            image = resize_if_needed(image)
+            images.append(image)
+            # Construct the prompt for each image
+            prompts.append(f"You are an AI assistant that solves questions by referring to the associated images. Analyze the context and notable features of the images. Provide an answer that covers the important aspects of the image. <image>{text}")
+        except Exception as e:
+            print(f"Skipping {img_path} due to error: {e}")
+            continue
+    
+    inputs = processor(
+        images=images, 
+        text=prompts, 
+        padding=True, 
+        return_tensors="pt"
+    ).to(device="cuda", dtype=torch.bfloat16)
+
+    # Generate
+    generate_ids = model.generate(
+        **inputs, 
+        max_new_tokens=50,
+        eos_token_id=processor.tokenizer.eos_token_id,
+        temperature=0.9,
+        top_p=0.95    
+    )
+    
+    answers = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+    # Strip the prompt from the output
+    cleaned = [output.replace(prompt, "").strip() for output, prompt in zip(answers, prompts)]
+    torch.cuda.empty_cache()
+    return cleaned
+
 # Inference loop with batching
 batch_size = 1
 results = []
@@ -396,12 +436,13 @@ for i in progress_bar:
         continue
 
     # Run model
-    answers = inference_batch(image_paths, prompts, model, processor)
+    # answers = inference_batch(image_paths, prompts, model, processor)
+    answers = chameleon_inf(image_paths, prompts, model, processor)
     
     # Update original items
     for idx, (item, result) in enumerate(zip(metadata, answers)):
-        item["generated_answer"] = result["generated_answer"]
-        item["extracted_answer"] = result["extracted_answer"]
+        # item["generated_answer"] = result["generated_answer"]
+        # item["extracted_answer"] = result["extracted_answer"]
         # print(item)
         # Interactive retry if answer is incorrect
         # if item["answer"] != result["extracted_answer"]:
@@ -416,7 +457,8 @@ for i in progress_bar:
         #         continue
         #     item.update(retry_result)
         # --- Post-process answer for accuracy evaluation ---
-        model_output = result["extracted_answer"]
+        # model_output = result["extracted_answer"]
+        model_output = result
         query = item["query"]
         ground_truth = item["answer"]
 

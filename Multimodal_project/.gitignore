@@ -5,3 +5,5 @@ Anole-7b-v0.1/
 ../Sem_project/
 ../miniconda3/
 .ipynb_checkpoints/*
+./vlm_basic
+./LVLM-Playground

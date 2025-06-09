@@ -10,10 +10,14 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 # model = AutoModelForImageTextToText.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct", cache_dir ="/cluster/work/sachan/piyushi/models/cache", trust_remote_code=True)
 
 
-processor = AutoProcessor.from_pretrained("facebook/chameleon-7b", trust_remote_code=True)
-model = AutoModelForImageTextToText.from_pretrained("facebook/chameleon-7b", trust_remote_code=True)
-processor.save_pretrained("/cluster/work/sachan/piyushi/models/chameleon-7b")
-model.save_pretrained("/cluster/work/sachan/piyushi/models/chameleon-7b")
+# processor = AutoProcessor.from_pretrained("facebook/chameleon-7b", trust_remote_code=True)
+# model = AutoModelForImageTextToText.from_pretrained("facebook/chameleon-7b", trust_remote_code=True)
+
+processor = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-7B-Instruct")
+model = AutoModelForImageTextToText.from_pretrained("Qwen/Qwen2-VL-7B-Instruct")
+
+processor.save_pretrained("/cluster/home/pgoyal/qwen-vl-7B")
+model.save_pretrained("/cluster/home/pgoyal/qwen-vl-7B")
 
 # from huggingface_hub import snapshot_download
 

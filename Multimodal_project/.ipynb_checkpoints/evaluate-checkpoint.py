@@ -90,7 +90,7 @@ def accuracy(preds, truths):
 
     
 # input_path = "mathvista_data/testmini/data.jsonl"
-output_path = "mathvista_data/testmini/cot_outputs.jsonl"
+output_path = "outputs/chameleon_outputs.jsonl"
 
 # with open(input_path, "r", encoding="utf-8") as f:
 #     input_data = [json.loads(line) for line in f]
@@ -105,7 +105,8 @@ misc = []
 for sample in output_data:
     pid = sample["pid"]
     query = sample["query"]
-    model_output = sample.get("revised_extracted_answer")
+    # model_output = sample.get("revised_extracted_answer")
+    model_output = sample.get("prediction")
     if model_output is None:
         model_output = sample["extracted_answer"]
     # model_output = sample["generated_answer"]
@@ -121,7 +122,8 @@ for sample in output_data:
         # print(extracted_answer)
 
         # Save extracted prediction to the sample
-        sample["prediction"] = extracted_answer
+        # sample["prediction"] = extracted_answer
+        sample["final_pred"] = extracted_answer
         handled = True
         # sample["pred_index"] = idx
     
@@ -138,23 +140,26 @@ for sample in output_data:
     #     misc.append(sample)
     
     elif is_numeric_only(model_output):
-        sample["prediction"] = model_output.strip()
+        # sample["prediction"] = model_output.strip()
+        sample["final_pred"] = model_output.strip()
         handled = True
 
     # NEW: default handling for other cases
     if not handled:
-        sample["prediction"] = model_output.strip()
+        # sample["prediction"] = model_output.strip()
+        sample["final_pred"] = model_output.strip()
 
     # Now always append
-    preds.append(sample["prediction"])
+    # preds.append(sample["prediction"])
+    preds.append(sample["final_pred"])
     truths.append(ground_truth)
 
 acc = accuracy(preds, truths)
 print(f"Accuracy: {acc:.2%}")
 # print(preds)
 # print(truths)
-output_2 = "mathvista_data/testmini/cot_acc.jsonl"
-# Save enriched dataset
-with open(output_2, "w", encoding="utf-8") as f:
-    for item in output_data:
-        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+# output_2 = "mathvista_data/testmini/cot_acc.jsonl"
+# # Save enriched dataset
+# with open(output_2, "w", encoding="utf-8") as f:
+#     for item in output_data:
+#         f.write(json.dumps(item, ensure_ascii=False) + "\n")

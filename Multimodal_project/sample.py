@@ -3,9 +3,9 @@ import os
 from PIL import Image
 from tqdm import tqdm
 import torch
-# from transformers import AutoProcessor, AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration
-# from qwen_vl_utils import process_vision_info
-from transformers import ChameleonProcessor, ChameleonForConditionalGeneration
+from transformers import AutoProcessor, AutoModelForImageTextToText, Qwen2_5_VLForConditionalGeneration
+from qwen_vl_utils import process_vision_info
+# from transformers import ChameleonProcessor, ChameleonForConditionalGeneration
 import re
 import editdistance
 import numpy as np
@@ -15,19 +15,19 @@ base_dir = "mathvista_data/testmini"
 # image_dir = os.path.join(base_dir, "images")
 jsonl_path = os.path.join(base_dir, "data.jsonl")
 # jsonl_path = "mathvista_data/testmini/misc_samples.jsonl"
-output_file = "outputs/chameleon_outputs.jsonl"
-model_path = "../../../../work/sachan/piyushi/models/chameleon-7b"
+output_file = "outputs/qa_outputs.jsonl"
+model_path = "../../../../work/sachan/piyushi/models/qwen-vl"
 
-# processor = AutoProcessor.from_pretrained(model_path, max_pixels=1280*28*28, trust_remote_code=True)
-# model = AutoModelForImageTextToText.from_pretrained(
-#     model_path,
-#     local_files_only=True,
-#     device_map="auto",
-#     torch_dtype="auto"
-# )
+processor = AutoProcessor.from_pretrained(model_path, max_pixels=1280*28*28, trust_remote_code=True)
+model = AutoModelForImageTextToText.from_pretrained(
+    model_path,
+    local_files_only=True,
+    device_map="auto",
+    torch_dtype="auto"
+)
 
-processor = ChameleonProcessor.from_pretrained(model_path)
-model = ChameleonForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="cuda")
+# processor = ChameleonProcessor.from_pretrained(model_path)
+# model = ChameleonForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.bfloat16, device_map="cuda")
 
 # Load dataset
 with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -376,7 +376,7 @@ def chameleon_inf(image_paths, texts, model, processor):
             image = resize_if_needed(image)
             images.append(image)
             # Construct the prompt for each image
-            prompts.append(f"You are an AI assistant that solves questions by referring to the associated images. Analyze the context and notable features of the images. Provide an answer that covers the important aspects of the image. <image>{text}")
+            prompts.append(f"<image> You are an AI assistant that solves questions by referring to the associated images. First look at the given image. Then provide an answer to the given question. Think step-by-step. Then provide the final answer to the question and don’t generate anything else.{text}")
         except Exception as e:
             print(f"Skipping {img_path} due to error: {e}")
             continue

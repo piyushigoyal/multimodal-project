@@ -32,7 +32,7 @@ def load_samples(json_path):
 
 if __name__ == "__main__":
     # Replace this with your actual JSON file path
-    json_file_path = "outputs/qa_chess.jsonl"
+    json_file_path = "gen_qa_outputs/text/chess.jsonl"
 
     samples = load_samples(json_file_path)
     compute_accuracy(samples)

@@ -26,6 +26,7 @@ def main(args):
 
 
     results = []
+    task_prompt = "You are given an image and an associated question alongwith some examples. Think step-by-step and please answer the following question where answer should be one of A, B, C, or D."
 
     for sample in tqdm(dataset, desc="Processing"):
         image_path = os.path.join(args.img_dir, sample["file"])
@@ -33,7 +34,7 @@ def main(args):
         
         example_prompt = sample.get("example_qa", "").strip()
         question = sample["question"].strip()
-        full_prompt = f"{example_prompt}\nQuestion: {question}"
+        full_prompt = f"\nInstructions: {task_prompt}\nExamples: {example_prompt}\nQuestion: {question}"
         ground_truth = sample["answer"]
         
         # example_prompt = sample["gt"].get("example_qa", "").strip()
